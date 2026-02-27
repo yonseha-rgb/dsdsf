@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>VOD 영구저장 프로토타입 v2</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:-apple-system,'Malgun Gothic','Noto Sans KR',sans-serif;background:#f5f5f8;color:#333;font-size:13px;}
+  .layout{display:flex;min-height:100vh;}
+  .sidebar{width:190px;background:#1B1D29;color:#aab;flex-shrink:0;padding-top:16px;}
+  .sidebar .logo{padding:0 16px 14px;border-bottom:1px solid #2a2d3a;margin-bottom:6px;}
+  .sidebar .logo b{color:#fff;font-size:14px;}
+  .sidebar .logo small{display:block;color:#667;font-size:10px;margin-top:2px;}
+  .nav-item{padding:8px 16px 8px 22px;cursor:pointer;display:flex;align-items:center;gap:7px;color:#99a;font-size:12px;transition:.15s;}
+  .nav-item:hover{background:#252838;color:#ccd;}
+  .nav-item.active{background:#2a2d42;color:#fff;border-right:3px solid #4F6AFF;}
+  .nav-item.sub{padding-left:38px;font-size:11px;}
+  .nav-item.sub.active{color:#4F6AFF;font-weight:600;background:#2a2d42;}
+  .nav-item.new-badge::after{content:"NEW";font-size:9px;background:#FF4D4F;color:#fff;padding:1px 5px;border-radius:3px;margin-left:auto;font-weight:700;}
+  .main{flex:1;overflow-x:auto;}
+  .topbar{background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 24px;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#888;}
+  .topbar b{color:#333;}
+  .content{padding:20px 24px;}
+  .tabs{display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:16px;}
+  .tab{padding:9px 20px;cursor:pointer;font-size:12px;color:#888;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-2px;transition:.15s;}
+  .tab:hover{color:#555;}
+  .tab.active{color:#4F6AFF;border-bottom-color:#4F6AFF;font-weight:700;}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:14px;}
+  .filter-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+  .filter-row select,.filter-row input{padding:6px 10px;border:1px solid #ddd;border-radius:5px;font-size:11px;outline:none;}
+  .filter-row select:focus,.filter-row input:focus{border-color:#4F6AFF;}
+  .filter-row input{width:200px;}
+  table{width:100%;border-collapse:collapse;}
+  thead th{background:#F8F9FB;padding:9px 10px;text-align:left;font-size:10px;color:#666;font-weight:600;border-bottom:1px solid #e5e7eb;white-space:nowrap;}
+  tbody td{padding:10px 10px;border-bottom:1px solid #f0f0f3;font-size:11px;vertical-align:middle;}
+  tbody tr:hover{background:#FAFAFF;}
+  .perm-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid;transition:.15s;}
+  .perm-btn.normal{background:#F9FAFB;color:#9CA3AF;border-color:#E5E7EB;}
+  .perm-btn.normal:hover{background:#F3F4F6;border-color:#D1D5DB;color:#6B7280;}
+  .perm-btn.saved{background:#EEF2FF;color:#4F46E5;border-color:#C7D2FE;}
+  .perm-btn.saved:hover{background:#E0E7FF;border-color:#A5B4FC;}
+  .badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:600;}
+  .badge-public{background:#ECFDF5;color:#059669;}
+  .badge-vod{background:#FFF7ED;color:#C2410C;}
+  .badge-live-vod{background:#F0F9FF;color:#0369A1;}
+  .badge-shorts{background:#F5F3FF;color:#7C3AED;}
+  .stats-row{display:flex;gap:12px;margin-bottom:16px;}
+  .stat-card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px 18px;min-width:140px;flex:1;max-width:200px;}
+  .stat-label{font-size:10px;color:#888;margin-bottom:3px;}
+  .stat-value{font-size:20px;font-weight:800;color:#333;}
+  .stat-value .unit{font-size:11px;color:#aaa;font-weight:500;}
+  .stat-card.hl{border-color:#C7D2FE;background:#FAFAFF;}
+  .stat-card.hl .stat-value{color:#4F46E5;}
+  .warn-box{background:#FFFBEB;border:1px solid #FDE68A;border-radius:7px;padding:10px 14px;font-size:11px;color:#92400E;line-height:1.6;display:flex;gap:6px;margin-bottom:14px;}
+  .text-muted{color:#999;font-size:10px;}
+  .btn{padding:6px 14px;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:4px;}
+  .btn-primary{background:#4F6AFF;color:#fff;}
+  .btn-primary:hover{background:#3D55DB;}
+  .btn-outline{background:#fff;color:#555;border:1px solid #ddd;}
+  .btn-outline:hover{background:#f9f9fb;border-color:#bbb;}
+  .btn-danger{background:#FF4D4F;color:#fff;}
+  .btn-danger:hover{background:#D9363E;}
+  .btn-sm{padding:4px 9px;font-size:10px;}
+  .chk{width:15px;height:15px;accent-color:#4F6AFF;cursor:pointer;}
+  .empty{text-align:center;padding:40px;color:#bbb;font-size:12px;}
+
+  /* ID 입력 영역 */
+  .id-input-card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:18px 20px;margin-bottom:14px;border-left:4px solid #4F6AFF;}
+  .id-input-card .card-title{font-size:13px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px;}
+  .id-input-card .card-desc{font-size:11px;color:#888;margin-bottom:14px;line-height:1.6;}
+  .id-input-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
+  .field-group{display:flex;flex-direction:column;gap:3px;}
+  .field-group label{font-size:10px;color:#666;font-weight:600;}
+  .field-group input{padding:7px 11px;border:1px solid #ddd;border-radius:5px;font-size:12px;outline:none;min-width:200px;}
+  .field-group input:focus{border-color:#4F6AFF;}
+  .field-group input::placeholder{color:#bbb;}
+
+  /* 영구저장 ID 뱃지 */
+  .perm-id-badge{display:inline-block;background:#DBEAFE;color:#1E40AF;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:600;font-family:monospace;margin-top:2px;}
+
+  /* Modal */
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;justify-content:center;align-items:center;}
+  .modal-bg.show{display:flex;}
+  .modal{background:#fff;border-radius:12px;padding:24px;width:420px;max-width:90vw;box-shadow:0 16px 48px rgba(0,0,0,.2);}
+  .modal h3{font-size:15px;margin-bottom:5px;}
+  .modal .desc{font-size:11px;color:#888;margin-bottom:14px;line-height:1.6;}
+  .modal .info-box{background:#F8F9FB;border:1px solid #eee;border-radius:6px;padding:10px 12px;font-size:11px;margin-bottom:14px;line-height:1.6;}
+  .modal .info-box b{color:#333;}
+  .modal .actions{display:flex;gap:6px;justify-content:flex-end;margin-top:16px;}
+  .modal .actions .btn-cancel{background:#F3F4F6;color:#555;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-size:12px;}
+  .modal .actions .btn-confirm{padding:8px 18px;border-radius:6px;border:none;color:#fff;cursor:pointer;font-size:12px;font-weight:600;}
+  .modal .actions .btn-confirm.blue{background:#4F6AFF;}
+  .modal .actions .btn-confirm.blue:hover{background:#3D55DB;}
+  .modal .actions .btn-confirm.red{background:#FF4D4F;}
+  .modal .actions .btn-confirm.red:hover{background:#D9363E;}
+  .modal .retention-info{background:#FFF7ED;border:1px solid #FDE68A;border-radius:6px;padding:10px;font-size:11px;color:#92400E;margin-top:10px;line-height:1.6;}
+  .modal .id-result{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:6px;padding:10px;font-size:11px;color:#0369A1;margin-top:10px;line-height:1.6;}
+  .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);padding:10px 24px;background:#1B1D29;color:#fff;border-radius:7px;font-size:12px;font-weight:500;z-index:2000;display:none;box-shadow:0 6px 24px rgba(0,0,0,.3);}
+  .toast.show{display:block;animation:ti .3s ease;}
+  @keyframes ti{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="sidebar">
+    <div class="logo"><b>Grip</b> 관리자센터<small>치즈아빠2 · yongha</small></div>
+    <div class="nav-item">👤 이용자 관리</div>
+    <div class="nav-item">💬 문의 관리</div>
+    <div class="nav-item active">📺 방송 관리</div>
+    <div class="nav-item sub" id="nav-all" onclick="go('all')" style="color:#fff;background:#2a2d42;">전체 방송</div>
+    <div class="nav-item sub new-badge" id="nav-perm" onclick="go('perm')">🔒 영구저장 목록</div>
+    <div class="nav-item sub">제외된 방송</div>
+    <div class="nav-item sub">삭제된 방송</div>
+    <div class="nav-item sub">방송 팀</div>
+    <div class="nav-item">🛒 쇼핑 관리</div>
+    <div class="nav-item">📦 주문 관리</div>
+    <div class="nav-item">💰 정산 관리</div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div>방송 관리 &gt; <b id="pageTitle">전체 방송</b></div>
+      <div>슈퍼셀러 대시보드 &nbsp; 가이드</div>
+    </div>
+    <div class="content">
+
+      <!-- ===== PAGE: 전체 방송 ===== -->
+      <div id="pg-all">
+        <div class="tabs">
+          <div class="tab" onclick="setTab('all')">전체</div>
+          <div class="tab" onclick="setTab('live')">LIVE</div>
+          <div class="tab active" id="tab-livevod" onclick="setTab('livevod')">LIVE VOD</div>
+          <div class="tab" id="tab-vod" onclick="setTab('vod')">VOD</div>
+        </div>
+        <div class="filter-row">
+          <select><option>공개 일시</option></select>
+          <select><option>담당MD</option></select>
+          <input placeholder="방송자 / 제목 검색..." id="searchAll" oninput="renderAll()">
+          <div style="flex:1"></div>
+          <button class="btn btn-outline btn-sm">📥 엑셀 다운로드</button>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table>
+            <thead><tr id="allHead"></tr></thead>
+            <tbody id="tbAll"></tbody>
+          </table>
+        </div>
+        <div style="font-size:11px;color:#aaa;text-align:center;padding:6px;">20개씩 보기 &nbsp; 78개 중 1~20</div>
+      </div>
+
+      <!-- ===== PAGE: 영구저장 목록 ===== -->
+      <div id="pg-perm" style="display:none;">
+        <div class="tabs"><div class="tab active">영구저장 목록</div></div>
+
+        <!-- ID 입력 영구저장 -->
+        <div class="id-input-card">
+          <div class="card-title">🔒 ID 기반 영구저장 설정</div>
+          <div class="card-desc">
+            ID를 입력하면 해당 ID에서 발생하는 <b>모든 VOD(LIVE VOD, VOD, 쇼츠)</b>가 영구저장 처리됩니다.<br>
+            이후 해당 ID로 새로 생성되는 VOD도 자동으로 영구저장됩니다.
+          </div>
+          <div class="id-input-row">
+            <div class="field-group">
+              <label>영구저장 대상 ID</label>
+              <input type="text" id="permIdInput" placeholder="예: seller_0042, broadcaster_id">
+            </div>
+            <button class="btn btn-primary" onclick="setPermById()">🔒 영구저장 설정</button>
+            <button class="btn btn-danger" onclick="unsetPermById()">🔓 영구저장 해제</button>
+          </div>
+          <div id="registeredIds" style="margin-top:12px;"></div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-card hl"><div class="stat-label">영구저장 VOD</div><div class="stat-value" id="stCnt">0<span class="unit">건</span></div></div>
+          <div class="stat-card"><div class="stat-label">영구저장 ID</div><div class="stat-value" id="stIdCnt">0<span class="unit">개</span></div></div>
+          <div class="stat-card"><div class="stat-label">전체 VOD 대비</div><div class="stat-value" id="stRatio">0<span class="unit">%</span></div></div>
+        </div>
+
+        <div class="warn-box">⚠️ 영구저장된 VOD는 자동 삭제 정책(서비스노출 6개월 + 백단 보관 6개월)에서 제외됩니다. 불필요한 영구저장은 스토리지 비용을 증가시킬 수 있습니다.</div>
+
+        <div class="filter-row">
+          <select id="permIdFilter" onchange="renderPerm()" style="min-width:160px;">
+            <option value="all">전체 ID</option>
+          </select>
+          <select id="permTypeFilter" onchange="renderPerm()">
+            <option value="all">전체 구분</option>
+            <option value="LIVE VOD">LIVE VOD</option>
+            <option value="VOD">VOD</option>
+            <option value="쇼츠">쇼츠</option>
+          </select>
+          <input placeholder="방송번호 / 방송자 / 제목 검색..." id="searchPerm" oninput="renderPerm()">
+          <div style="flex:1"></div>
+          <button class="btn btn-danger btn-sm" onclick="bulkRelease()">🔓 선택 해제</button>
+          <button class="btn btn-outline btn-sm">📥 엑셀 다운로드</button>
+        </div>
+
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table>
+            <thead><tr>
+              <th><input type="checkbox" class="chk" id="ckAllPerm" onchange="togglePermAll(this)"></th>
+              <th>영구저장 ID</th><th>방송번호</th><th>방송자</th><th>담당MD</th><th>구분</th><th>제목</th>
+              <th>저장 일시</th><th>공개 일시</th><th>기능</th>
+            </tr></thead>
+            <tbody id="tbPerm"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 영구저장 설정 모달 (개별) -->
+<div class="modal-bg" id="mSet">
+  <div class="modal">
+    <h3>🔒 영구저장 처리</h3>
+    <p class="desc">해당 VOD를 영구저장 처리하시겠습니까?</p>
+    <div class="info-box" id="mSetInfo"></div>
+    <div style="font-size:11px;color:#666;line-height:1.6;">
+      영구저장 시 자동 삭제 정책에서 제외되며,<br>별도 해제 전까지 영구적으로 보관됩니다.
+    </div>
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeM('mSet')">취소</button>
+      <button class="btn-confirm blue" onclick="confirmSet()">영구저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 영구저장 해제 모달 (개별) -->
+<div class="modal-bg" id="mUnset">
+  <div class="modal">
+    <h3>🔓 영구저장 취소</h3>
+    <p class="desc">영구저장을 취소하시겠습니까?</p>
+    <div class="info-box" id="mUnsetInfo"></div>
+    <div class="retention-info">
+      ⚠️ <b>해제 시 보관 정책 안내</b><br><br>
+      · 기본 보관 기간: <b>최대 1년</b> (서비스노출 6개월 + 백단 보관 6개월)<br>
+      · 해제 시점부터 <b>6개월 후 서비스 노출 종료</b>, 이후 6개월간 백단 보관 후 완전 삭제<br>
+      · 삭제된 VOD는 복구할 수 없습니다.
+    </div>
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeM('mUnset')">취소</button>
+      <button class="btn-confirm red" onclick="confirmUnset()">영구저장 해제</button>
+    </div>
+  </div>
+</div>
+
+<!-- ID 기반 영구저장 설정 모달 -->
+<div class="modal-bg" id="mIdSet">
+  <div class="modal">
+    <h3>🔒 ID 기반 영구저장 설정</h3>
+    <p class="desc">해당 ID의 모든 VOD를 영구저장 처리합니다.</p>
+    <div class="info-box" id="mIdSetInfo"></div>
+    <div class="id-result" id="mIdSetResult"></div>
+    <div style="font-size:11px;color:#666;line-height:1.6;margin-top:10px;">
+      · 해당 ID의 기존 VOD(LIVE VOD, VOD, 쇼츠) 모두 영구저장<br>
+      · 이후 새로 생성되는 VOD도 자동으로 영구저장 처리
+    </div>
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeM('mIdSet')">취소</button>
+      <button class="btn-confirm blue" onclick="confirmIdSet()">일괄 영구저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ID 기반 영구저장 해제 모달 -->
+<div class="modal-bg" id="mIdUnset">
+  <div class="modal">
+    <h3>🔓 ID 기반 영구저장 해제</h3>
+    <p class="desc">해당 ID의 영구저장을 해제합니다.</p>
+    <div class="info-box" id="mIdUnsetInfo"></div>
+    <div class="retention-info">
+      ⚠️ <b>해제 시 보관 정책 안내</b><br><br>
+      · 해당 ID의 모든 VOD(LIVE VOD, VOD, 쇼츠)에 기본 보관 정책 재적용<br>
+      · 해제 시점부터 <b>6개월 후 서비스 노출 종료</b><br>
+      · 이후 6개월간 백단 보관 후 완전 삭제<br>
+      · 이후 새로 생성되는 VOD도 기본 정책 적용
+    </div>
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeM('mIdUnset')">취소</button>
+      <button class="btn-confirm red" onclick="confirmIdUnset()">일괄 해제</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let curTab='livevod', actionTarget=null, pendingPermId='', permChecked=new Set();
+
+// 등록된 영구저장 ID 목록
+let registeredPermIds = ["seller_0042"];
+
+const D=[
+  {id:"2018881",code:"owjpivl9",bc:"윤신희 [Yunbon 윤본]",sellerId:"seller_0042",md:"",type:"LIVE VOD",st:"공개중",title:"가격 오르기전 마지막 공동구매",date:"2026-02-26 16:41",perm:true,permId:"seller_0042",permDate:"2026-02-20 10:00"},
+  {id:"2018816",code:"ovevq8r3",bc:"[매니사랑니라사랑]",sellerId:"seller_0099",md:"",type:"VOD",st:"공개중",title:"안녕 안녕 안녕 안녕",date:"2026-02-26 15:12",perm:false,permId:null,permDate:null},
+  {id:"2018485",code:"o1gkq5wo",bc:"윤신희 [Yunbon 윤본]",sellerId:"seller_0042",md:"",type:"LIVE VOD",st:"공개중",title:"도도도르보떼 나도 모고 싶어...",date:"2026-02-25 23:03",perm:true,permId:"seller_0042",permDate:"2026-02-20 10:00"},
+  {id:"2018015",code:"3x85q7qo",bc:"[심심햇]",sellerId:"seller_0077",md:"그립 입점 MD",type:"VOD",st:"공개중",title:"톡 터지는 새콤달콤 루비빛토마토",date:"2026-02-25 17:00",perm:true,permId:"seller_0077",permDate:"2026-02-18 14:00"},
+  {id:"2017978",code:"97rzmvv3",bc:"[심심햇]",sellerId:"seller_0077",md:"그립 입점 MD",type:"VOD",st:"공개중",title:"태우지 않아 깔끔한 저온담잠 참기름",date:"2026-02-25 17:00",perm:true,permId:"seller_0077",permDate:"2026-02-18 14:00"},
+  {id:"2016228",code:"32gmpj1o",bc:"[심심햇]",sellerId:"seller_0077",md:"그립 입점 MD",type:"LIVE VOD",st:"공개중",title:"탱글한 살발 가득 대물 민물장어",date:"2026-02-23 14:00",perm:true,permId:"seller_0077",permDate:"2026-02-18 14:00"},
+  {id:"2015880",code:"3yr1665o",bc:"윤신희 [Yunbon 윤본]",sellerId:"seller_0042",md:"",type:"VOD",st:"공개중",title:"포올라인 x 윤본 에사비 바이트",date:"2026-02-22 23:33",perm:true,permId:"seller_0042",permDate:"2026-02-20 10:00"},
+  {id:"2015138",code:"9n04xqvo",bc:"[심심햇]",sellerId:"seller_0077",md:"그립 입점 MD",type:"쇼츠",st:"공개중",title:"포슬포슬 진짜 밤고구마 맛 30초",date:"2026-02-21 14:00",perm:true,permId:"seller_0077",permDate:"2026-02-18 14:00"},
+  {id:"2015147",code:"9z04wqyo",bc:"윤신희 [Yunbon 윤본]",sellerId:"seller_0042",md:"",type:"쇼츠",st:"공개중",title:"플리마켓 폭탄 하이라이트",date:"2026-02-21 13:28",perm:true,permId:"seller_0042",permDate:"2026-02-20 10:00"},
+  {id:"2014995",code:"9z04w0vo",bc:"[DIY 아트릭]",sellerId:"seller_0111",md:"그립 입점 MD",type:"VOD",st:"공개중",title:"동영상 스토어 꿀의 방법 & 아크릴",date:"2026-02-21 01:57",perm:false,permId:null,permDate:null},
+  {id:"2014284",code:"94d1v7k9",bc:"윤신희 [Yunbon 윤본]",sellerId:"seller_0042",md:"김유원",type:"LIVE VOD",st:"공개중",title:"영양밀프로젝트 다이어트 클렌즈",date:"2026-02-19 23:48",perm:true,permId:"seller_0042",permDate:"2026-02-20 10:00"},
+  {id:"2014273",code:"9rj7q47o",bc:"[심심햇]",sellerId:"seller_0077",md:"그립 입점 MD",type:"쇼츠",st:"공개중",title:"머리나잘 제거한 손질 꽃치 15초",date:"2026-02-19 23:00",perm:true,permId:"seller_0077",permDate:"2026-02-18 14:00"},
+];
+
+function setTab(t){
+  curTab=t;
+  document.querySelectorAll('#pg-all .tab').forEach(el=>el.classList.remove('active'));
+  if(t==='all') document.querySelectorAll('#pg-all .tab')[0].classList.add('active');
+  else if(t==='live') document.querySelectorAll('#pg-all .tab')[1].classList.add('active');
+  else if(t==='livevod') document.getElementById('tab-livevod').classList.add('active');
+  else document.getElementById('tab-vod').classList.add('active');
+  renderAll();
+}
+
+function go(p){
+  document.getElementById('pg-all').style.display=p==='all'?'':'none';
+  document.getElementById('pg-perm').style.display=p==='perm'?'':'none';
+  document.getElementById('pageTitle').textContent=p==='all'?'전체 방송':'영구저장 목록';
+  document.getElementById('nav-all').style.color=p==='all'?'#fff':'';
+  document.getElementById('nav-all').style.background=p==='all'?'#2a2d42':'';
+  document.getElementById('nav-perm').style.color=p==='perm'?'#4F6AFF':'';
+  document.getElementById('nav-perm').style.background=p==='perm'?'#2a2d42':'';
+  if(p==='perm'){renderPerm();updStats();renderRegisteredIds();updPermIdFilter();}
+  else renderAll();
+}
+
+function showPermCol(){return curTab==='livevod'||curTab==='vod';}
+
+function getTypeBadge(t){
+  if(t==='VOD') return 'badge-vod';
+  if(t==='LIVE VOD') return 'badge-live-vod';
+  if(t==='쇼츠') return 'badge-shorts';
+  return '';
+}
+
+// Render 전체 방송
+function renderAll(){
+  const q=document.getElementById('searchAll').value.toLowerCase();
+  let list=D;
+  if(curTab==='livevod') list=D.filter(v=>v.type==='LIVE VOD');
+  else if(curTab==='vod') list=D.filter(v=>v.type==='VOD');
+  else if(curTab==='live') list=D.filter(v=>v.type==='LIVE');
+  if(q) list=list.filter(v=>v.bc.toLowerCase().includes(q)||v.title.toLowerCase().includes(q)||v.id.includes(q));
+  const sp=showPermCol();
+  document.getElementById('allHead').innerHTML=`<th>∨</th><th>기능</th><th>방송번호/코드</th><th>방송자</th><th>담당MD</th><th>구분</th><th>상태</th>${sp?'<th style="min-width:100px;">영구저장</th>':''}<th>제목</th><th>공개 일시</th>`;
+  document.getElementById('tbAll').innerHTML=list.map(v=>{
+    const tb=getTypeBadge(v.type);
+    const permCell=sp?(v.perm
+      ?`<td><span class="perm-btn saved" onclick="clickPerm('${v.id}')">🔒 영구저장</span>${v.permId?'<br><span class="perm-id-badge">'+v.permId+'</span>':''}</td>`
+      :`<td><span class="perm-btn normal" onclick="clickPerm('${v.id}')">일반</span></td>`):'';
+    return `<tr${v.perm&&sp?' style="background:#F5F7FF;"':''}>
+      <td>∨</td><td style="color:#aaa;">···</td>
+      <td><b>${v.id}</b><br><span class="text-muted">${v.code}</span></td>
+      <td>${v.bc}<br><span class="text-muted">판매자</span></td>
+      <td>${v.md||'<span class="text-muted">-</span>'}</td>
+      <td><span class="badge ${tb}">${v.type}</span></td>
+      <td><span class="badge badge-public">${v.st}</span></td>
+      ${permCell}
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${v.title}</td>
+      <td class="text-muted">${v.date}</td>
+    </tr>`;
+  }).join('');
+}
+
+function clickPerm(id){
+  const v=D.find(x=>x.id===id);actionTarget=v;
+  if(!v.perm){
+    document.getElementById('mSetInfo').innerHTML=`<b>${v.id}</b> · ${v.bc}<br>${v.title}`;
+    document.getElementById('mSet').classList.add('show');
+  } else {
+    document.getElementById('mUnsetInfo').innerHTML=`<b>${v.id}</b> · ${v.bc}<br>${v.title}${v.permId?'<br><span style="font-size:10px;color:#4F46E5;">영구저장 ID: '+v.permId+'</span>':''}`;
+    document.getElementById('mUnset').classList.add('show');
+  }
+}
+
+function confirmSet(){
+  if(!actionTarget) return;
+  actionTarget.perm=true;
+  actionTarget.permDate=new Date().toISOString().slice(0,16).replace('T',' ');
+  closeM('mSet'); renderAll();
+  toast('✅ 영구저장 처리되었습니다.');
+}
+
+function confirmUnset(){
+  if(!actionTarget) return;
+  actionTarget.perm=false; actionTarget.permId=null; actionTarget.permDate=null;
+  closeM('mUnset'); renderAll();
+  toast('🔓 영구저장이 해제되었습니다. 6개월 후 서비스 노출이 종료됩니다.');
+}
+
+// === ID 기반 영구저장 ===
+function setPermById(){
+  const pid=document.getElementById('permIdInput').value.trim();
+  if(!pid){toast('❌ ID를 입력해주세요.');return;}
+  const targets=D.filter(v=>v.sellerId===pid&&!v.perm);
+  const already=D.filter(v=>v.sellerId===pid&&v.perm);
+  pendingPermId=pid;
+  document.getElementById('mIdSetInfo').innerHTML=`<b>ID:</b> ${pid}`;
+  document.getElementById('mIdSetResult').innerHTML=`📊 대상 현황<br>· 신규 영구저장: <b>${targets.length}건</b> (LIVE VOD, VOD, 쇼츠)<br>· 이미 영구저장: ${already.length}건<br>· 전체: ${targets.length+already.length}건`;
+  if(targets.length===0&&already.length===0){
+    document.getElementById('mIdSetResult').innerHTML=`⚠️ 해당 ID로 등록된 VOD가 없습니다. ID를 확인해주세요.`;
+  }
+  document.getElementById('mIdSet').classList.add('show');
+}
+
+function confirmIdSet(){
+  const pid=pendingPermId;
+  const now=new Date().toISOString().slice(0,16).replace('T',' ');
+  D.filter(v=>v.sellerId===pid).forEach(v=>{v.perm=true;v.permId=pid;v.permDate=now;});
+  if(!registeredPermIds.includes(pid)) registeredPermIds.push(pid);
+  closeM('mIdSet');
+  renderAll();renderPerm();updStats();renderRegisteredIds();updPermIdFilter();
+  document.getElementById('permIdInput').value='';
+  toast(`✅ ${pid} 의 모든 VOD가 영구저장 처리되었습니다.`);
+}
+
+function unsetPermById(){
+  const pid=document.getElementById('permIdInput').value.trim();
+  if(!pid){toast('❌ ID를 입력해주세요.');return;}
+  const targets=D.filter(v=>v.permId===pid&&v.perm);
+  if(targets.length===0){toast('❌ 해당 ID로 영구저장된 VOD가 없습니다.');return;}
+  pendingPermId=pid;
+  document.getElementById('mIdUnsetInfo').innerHTML=`<b>ID:</b> ${pid}<br>해제 대상: <b>${targets.length}건</b>`;
+  document.getElementById('mIdUnset').classList.add('show');
+}
+
+function confirmIdUnset(){
+  const pid=pendingPermId;
+  D.filter(v=>v.permId===pid).forEach(v=>{v.perm=false;v.permId=null;v.permDate=null;});
+  registeredPermIds=registeredPermIds.filter(x=>x!==pid);
+  closeM('mIdUnset');
+  renderAll();renderPerm();updStats();renderRegisteredIds();updPermIdFilter();
+  document.getElementById('permIdInput').value='';
+  toast(`🔓 ${pid} 의 모든 VOD 영구저장이 해제되었습니다.`);
+}
+
+function renderRegisteredIds(){
+  const el=document.getElementById('registeredIds');
+  if(registeredPermIds.length===0){el.innerHTML='';return;}
+  el.innerHTML=`<div style="font-size:10px;color:#666;font-weight:600;margin-bottom:6px;">등록된 영구저장 ID (${registeredPermIds.length}개)</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">${registeredPermIds.map(pid=>{
+      const cnt=D.filter(v=>v.permId===pid&&v.perm).length;
+      return `<span style="display:inline-flex;align-items:center;gap:6px;background:#EEF2FF;border:1px solid #C7D2FE;padding:4px 10px;border-radius:5px;font-size:11px;">
+        <b style="color:#4F46E5;font-family:monospace;">${pid}</b>
+        <span style="color:#888;">${cnt}건</span>
+      </span>`;
+    }).join('')}</div>`;
+}
+
+function updPermIdFilter(){
+  const sel=document.getElementById('permIdFilter');
+  const cur=sel.value;
+  const ids=[...new Set(D.filter(v=>v.perm&&v.permId).map(v=>v.permId))];
+  sel.innerHTML='<option value="all">전체 ID</option>'+ids.map(id=>`<option value="${id}" ${id===cur?'selected':''}>${id} (${D.filter(v=>v.permId===id&&v.perm).length}건)</option>`).join('');
+}
+
+// Render 영구저장 목록
+function renderPerm(){
+  const q=document.getElementById('searchPerm').value.toLowerCase();
+  const pidF=document.getElementById('permIdFilter').value;
+  const typeF=document.getElementById('permTypeFilter').value;
+  let list=D.filter(v=>v.perm);
+  if(pidF!=='all') list=list.filter(v=>v.permId===pidF);
+  if(typeF!=='all') list=list.filter(v=>v.type===typeF);
+  if(q) list=list.filter(v=>v.bc.toLowerCase().includes(q)||v.title.toLowerCase().includes(q)||v.id.includes(q));
+  if(!list.length){
+    document.getElementById('tbPerm').innerHTML='<tr><td colspan="10" class="empty">📭 영구저장된 VOD가 없습니다.</td></tr>';return;
+  }
+  document.getElementById('tbPerm').innerHTML=list.map(v=>{
+    const tb=getTypeBadge(v.type);
+    return `<tr>
+      <td><input type="checkbox" class="chk" data-id="${v.id}" ${permChecked.has(v.id)?'checked':''} onchange="tglPerm(this)"></td>
+      <td><span class="perm-id-badge">${v.permId||'-'}</span></td>
+      <td><b>${v.id}</b></td>
+      <td>${v.bc}</td>
+      <td>${v.md||'-'}</td>
+      <td><span class="badge ${tb}">${v.type}</span></td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${v.title}</td>
+      <td class="text-muted">${v.permDate}</td>
+      <td class="text-muted">${v.date}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="clickPerm('${v.id}')">해제</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function tglPerm(el){if(el.checked)permChecked.add(el.dataset.id);else permChecked.delete(el.dataset.id);}
+function togglePermAll(el){document.querySelectorAll('#tbPerm .chk').forEach(c=>{c.checked=el.checked;if(el.checked)permChecked.add(c.dataset.id);else permChecked.delete(c.dataset.id);});}
+
+function bulkRelease(){
+  if(!permChecked.size){toast('❌ 해제할 항목을 선택해주세요.');return;}
+  permChecked.forEach(id=>{const v=D.find(x=>x.id===id);if(v){v.perm=false;v.permId=null;v.permDate=null;}});
+  permChecked.clear();document.getElementById('ckAllPerm').checked=false;
+  renderPerm();updStats();updPermIdFilter();renderRegisteredIds();
+  toast('🔓 선택한 VOD의 영구저장이 해제되었습니다.');
+}
+
+function updStats(){
+  const p=D.filter(v=>v.perm);
+  const ids=[...new Set(p.map(v=>v.permId).filter(Boolean))];
+  document.getElementById('stCnt').innerHTML=p.length+'<span class="unit">건</span>';
+  document.getElementById('stIdCnt').innerHTML=ids.length+'<span class="unit">개</span>';
+  document.getElementById('stRatio').innerHTML=Math.round(p.length/D.length*100)+'<span class="unit">%</span>';
+}
+
+function closeM(id){document.getElementById(id).classList.remove('show');actionTarget=null;}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2800);}
+
+renderAll();
+</script>
+</body>
+</html>
